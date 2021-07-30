@@ -1,0 +1,12 @@
+{
+  "name": "relay-server",
+  "version": "0.0.0",
+  "description": "RelayServer",
+  "main": "relay_server.js",
+  "author": {
+    "name": ""
+  },
+  "dependencies": {
+    "log4js": "^6.3.0"
+  }
+}

@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>商品コードの登録</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: relative;
+            top: 0px;
+            left: 0px;
+            width: 240px;
+            height: 240px;
+            font-size: 24px;
+        }
+
+        input.a {
+            font-size: 24px;
+            width: 220px;
+        }
+
+        div {
+            position: relative;
+            top: 180px;
+            left: 0px;
+            height: 60px;
+            width: 240px;
+            text-align: left;
+        }
+
+        input.b {
+            font-size: 24px;
+        }
+
+        input.c {
+            font-size: 16px;
+            width: 220px;
+            height: 20px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        //商品コードを登録する
+        function Regist() {
+            if (!wit.ExistFile("productlist.csv")) {
+                wit.MsgBox("登録に必要なファイル\r(productlist.csv)がありません");
+                return;
+            }
+            var fstream = wit.OpenStream("productlist.csv");
+            if (fstream === null) {
+                wit.MsgBox("CSVが開けませんでした");
+                history.back();
+            }
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn === "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+                history.back();
+            }
+            var success_count = 0;
+            var failure_count = 0;
+            var sum = CheckSum(fstream);
+            fstream.Seek(0);    //先頭に戻す
+            var record = fstream.ReadRecord();
+            while (!fstream.Eof()) {   //record !== null
+                //2列未満場合は、カウントしないではじく
+                if (record.length === 2 || record.length === 5) {
+                    //従業員コードがすでにある場合にははじく
+                    var result1 = conn.Execute("SELECT * FROM " + _SQLITE_PRODUCTTABLE + " WHERE code = '" + record[0] + "';");
+                    if (typeof result1 == "number") {
+                        failure_count++;    //クエリ失敗
+                    }
+                    else {
+                        if (!result1.Eof()) {
+                            failure_count++;    // 既存
+                        }
+                        else {
+                            //インサート
+                            var result2;
+                            if (record.length == 2) {
+                                result2 = conn.Execute("INSERT INTO " + _SQLITE_PRODUCTTABLE + "(code, name) VALUES('" + record[0] + "', '" + record[1] + "');");
+                            }
+                            else {
+                                result2 = conn.Execute("INSERT INTO " + _SQLITE_PRODUCTTABLE + "(code, name, x, y, z) VALUES('" + record[3] + "', '" + record[4] + "', " + record[0] + ", " + record[1] + ", " + record[2] + ");");
+                            }
+                            if (typeof result2 == "number") {
+                                failure_count++;
+                            }
+                            else {
+                                success_count++;
+                                result2.Close();
+                            }
+                        }
+                        result1.Close();
+                    }
+                }
+                record = fstream.ReadRecord();
+                Progress(sum, success_count, failure_count);
+            }
+            conn.Close();
+            fstream.Close();
+            wit.DeleteFile("productlist.csv");
+            if (failure_count === 0)
+                wit.MsgBox("成功数：" + success_count);
+            else
+                wit.MsgBox("成功数：" + success_count + "\r\n失敗数：" + failure_count);
+            history.back();
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+
+        function CheckSum(fstream){
+            var counter = 0;
+            var record = fstream.ReadRecord();
+            while (!fstream.Eof()) {
+                counter++;
+                record = fstream.ReadRecord();
+            }
+            return counter;
+        }
+
+        function Progress(sum, success_count, failure_count) {
+            var percentage;
+            if (failure_count === 0) {
+                percentage = 100 * success_count / sum;
+                document.getElementById("progress_msg").innerText = percentage.toFixed(2) + "%(" + success_count + ")";
+            }
+            else {
+                percentage = 100 * (success_count + failure_count) / sum;
+                document.getElementById("progress_msg").innerText = percentage.toFixed(2) + "%(" + (success_count + failure_count) + "[, " + failure_count + "])";
+            }
+        }
+    </script>
+</head>
+<body>
+    <form name="register">
+        「productlist.csv」を登録します<br>
+        CSVファイルは登録後削除されます<br><br>
+        <input class="b" type="button" onclick="ReceiveFile()" value="ファイル受信"><br><br>
+        <input class="b" type="button" onclick="Regist()" value="登録">
+        <label id="progress_msg"></label><br><br>
+        <input class="b" type="button" onclick="javascript:history.back()" value="戻る">
+    </form>
+</body>
+</html>

@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>作業内容ホーム</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        a {
+            font-size: 22px;
+        }
+
+        table {
+            border-collapse: collapse;
+            font-size: 16px;
+            width: 230px;
+        }
+
+        th.id {
+            display: none;
+        }
+
+        td {
+            border: solid 2px;
+            padding: 0.5em;
+        }
+
+        input {
+            font-size: 24px;
+        }
+
+        input.delete {
+            font-size: 20px;
+        }
+
+        label {
+            font-size: 24px;
+        }
+
+        textarea {
+            width: 100px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var id_subject;
+        var id_ope;
+        var ope_name;
+        var f2_flag;
+
+        function DeleteRow(target) {
+            if (wit.MsgBox("本当に削除しますか", _MSGBOX_BTN_YESNOJP) != 0) {
+                return;
+            }
+            //var row = target.parentNode.parentNode; //削除する行
+            //row.parentNode.deleteRow(row.sectionRowIndex);//ここでしくってる？ブラウザがdeleteRowに対応していないっぽい
+
+            var row = target.parentNode.parentNode;
+            var id_operation = row.cells[0].firstChild.data;
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                //subject用テーブルを作成
+                var result = conn.Execute("DELETE FROM " + _SQLITE_OPERATIONTABLE + " WHERE id = " + id_operation + ";");
+                if (typeof result == "number") {
+                    wit.MsgBox("DELETE失敗\rCode:" + result);
+                    conn.Close();
+                    return;
+                }
+            }
+            conn.Close();
+
+            row.parentNode.removeChild(row);
+        }
+
+        function Delete() {
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn === "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+                SendForm("operation.html", { id_subject: QueryString["id_subject"], id_ope: 1});
+            }
+            if (wit.MsgBox("全作業内容\rを削除しますか", _MSGBOX_BTN_YESNOJP) !== 0) {
+                conn.Close();
+                SendForm("operation.html", { id_subject: QueryString["id_subject"], id_ope: 1});
+            }
+            else {
+                var result = conn.Execute("DELETE FROM " + _SQLITE_OPERATIONTABLE);
+                if (typeof result == "number") {
+                    wit.MsgBox("削除に失敗しました。");
+                }
+                else {
+                    wit.MsgBox("削除に成功しました。");
+                }
+                result.Close();
+                conn.Close();
+                SendForm("operation.html", {id_subject: QueryString["id_subject"], id_ope:1});
+            }
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2" && f2_flag) {
+                SendForm("assets.html", { id_subject: QueryString["id_subject"] });
+            }
+        }
+
+        function ShowDialog() {
+            document.getElementById("query_dialog").style.display = "block";
+            document.getElementById("menu").style.display = "none";
+        }
+
+        function HideDialog() {
+            document.getElementById("query_dialog").style.display = "none";
+            document.getElementById("menu").style.display = "block";
+        }
+
+        function UpdateTable(query_type) {
+            if (query_type === 0) {
+                id_ope = parseInt(document.getElementById("id_ope").value, 10);
+                if (isNaN(id_ope)) {
+                    wit.MsgBox("無効な値です。(" + document.getElementById("id_ope").value + ")");
+                    return;
+                }
+            }
+            else {
+                ope_name = document.getElementById("ope_name").value;
+            }
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                var table = document.getElementById("operation_table");
+                // 行を追加
+                var sql;
+                if (query_type === 0) {
+                    sql = "SELECT * FROM " + _SQLITE_OPERATIONTABLE + " WHERE operation = " + id_ope + " ORDER BY ope_order ASC;";
+                }
+                else {
+                    sql = "SELECT * FROM " + _SQLITE_OPERATIONTABLE + " WHERE name = '" + ope_name + "' ORDER BY operation ASC, ope_order ASC;";
+                }
+                var recordset = conn.Execute(sql);
+                while (!recordset.Eof()) {
+                    var row = document.createElement("tr");
+                    var cell_id = row.insertCell(-1);
+                    cell_id.innerHTML = recordset.GetField("id");
+                    var cell_name = row.insertCell(-1);
+                    cell_name.innerHTML = recordset.GetField("name");
+                    var cell_operation = row.insertCell(-1);
+                    cell_operation.innerHTML = recordset.GetField("operation");
+                    var cell_ope_order = row.insertCell(-1);
+                    cell_ope_order.innerHTML = recordset.GetField("ope_order");
+                    var cell_button = row.insertCell(-1);
+                    cell_button.innerHTML = "<input type='button' class='delete' value='削除' onclick='DeleteRow(this)'>";
+                    row.firstChild.style.display = "none";
+                    if (id_subject !== "1") {
+                        row.children[4].style.display = "none";
+                    }
+                    table.firstChild.appendChild(row);
+                    recordset.MoveNext();
+                }
+                recordset.Close();
+            }
+            conn.Close();
+        }
+
+        function Reload(query_type) {
+            if (query_type === 0) {
+                id_ope = parseInt(document.getElementById("id_ope").value, 10);
+                if (isNaN(id_ope)) {
+                    wit.MsgBox("無効な値です。(" + document.getElementById("id_ope").value + ")");
+                    return;
+                }
+                SendForm("operation.html", { id_subject: QueryString["id_subject"], id_ope: id_ope });
+            }
+            else {
+                ope_name = document.getElementById("ope_name").value;
+                SendForm("operation.html", { id_subject: QueryString["id_subject"], name: ope_name });
+            }
+        }
+
+        window.onload = function () {
+            id_ope = QueryString["id_ope"];
+            ope_name = QueryString["name"];
+            document.getElementById("query_dialog").style.display = "none";
+            f2_flag = true;
+            id_subject = QueryString["id_subject"];
+            if (id_subject !== "1") {
+                document.getElementById("admin_div").style.display = "none";
+            }
+            if (id_ope !== undefined) {
+                document.getElementById("id_ope").value = id_ope;
+                UpdateTable(0);//ここで横スクロールバーが発生
+            }
+            else {
+                document.getElementById("ope_name").value = ope_name;
+                UpdateTable(1);//ここで横スクロールバーが発生
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="query_dialog">
+        作業ID：<textarea id="id_ope" rows="1"></textarea><br>
+        <button onclick="javascript:Reload(0);">実行</button><br>
+        内容：<textarea id="ope_name" rows="1"></textarea><br>
+        <button onclick="javascript:Reload(1);">実行</button><br>
+        <br><button id="hide" onclick="javascript:HideDialog();">非表示</button><br>
+    </div>
+    <div id="menu">
+        <button id="back" onclick="javascript: SendForm('assets.html', {id_subject: QueryString['id_subject']});">戻る</button>
+        &nbsp;&nbsp;&nbsp;<button id="show" onclick="javascript:ShowDialog();">検索</button><br>
+        <div id="admin_div">
+            <hr width="60%" align="center"/>
+            <a href="javascript:SendForm('regist_operation.html', {id_subject: QueryString['id_subject']});">作業内容登録</a><br>
+            <a href="javascript:Delete();">全データ削除</a><br>
+            <hr width="60%" align="center" />
+        </div>
+        <table id="operation_table">
+            <tr style="background:#ccccff">
+                <th class="id">ID</th>
+                <th>内容</th>
+                <th>作業ID</th>
+                <th>順番</th>
+                <th></th>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

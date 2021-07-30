@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ホーム</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 600px;
+            height: 240px;
+            font-size: 32px;
+        }
+
+        input.a {
+            font-size: 24px;
+            width: 150px;
+        }
+
+        input.b {
+            font-size: 22px;
+        }
+
+        label {
+            font-size: 24px;
+        }
+
+        div {
+            display: none;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script type="text/javascript" src="thread.js"></script>
+    <script type="text/javascript" src="jquery-3.5.1.min.js"></script>
+    <script>
+        window.onload = function () {
+            print("1");
+            var test_xhr = new XMLHttpRequest();
+            for (var n in test_xhr) {
+                print(n)
+            }
+
+            print("2");
+            var methods = ["setTimeout", "UNSENT", "OPENED", "HEADERS_RECEIVED", "LOADING", "DONE", "onreadystatechange", "readyState", "timeout", "withCredentials", "upload", "responseURL", "status", "statusText", "responseType", "response", "responseText", "responseXML", "open", "setRequestHeader", "send", "abort", "getResponseHeader", "getAllResponseHeaders", "overrideMimeType"]
+            for (var i = 0; i < methods.length; i++) {
+                print(methods[i] + ":" + (methods[i] in XMLHttpRequest.prototype));
+            }
+
+            print("3");
+            var methods = ["setTimeout", "UNSENT", "OPENED", "HEADERS_RECEIVED", "LOADING", "DONE", "onreadystatechange", "readyState", "timeout", "withCredentials", "upload", "responseURL", "status", "statusText", "responseType", "response", "responseText", "responseXML", "open", "setRequestHeader", "send", "abort", "getResponseHeader", "getAllResponseHeaders", "overrideMimeType"]
+            for (var i = 0; i < methods.length; i++) {
+                print(methods[i] + ":" + (methods[i] in test_xhr));
+            }
+
+            nowSending = false;
+            var id_subject = QueryString["id_subject"];
+            if (typeof id_subject === "undefined" || id_subject < 0) {   //非ログイン時
+                document.getElementById("login").style.display = "block";
+            }
+            else {  //ログイン時
+                document.getElementById("user").textContent = "testUser";
+                document.getElementById("logout").style.display = "block";
+                if (id_subject === 1) {    //管理者でログイン時
+                    document.getElementById("time").style.display = "block";
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+    <form name="menu">
+        <div id="login">
+            番号<input type="text" class="a" name="code">
+            <input type="button" class="b" onclick="Login()" value="ログイン"><br>
+        </div>
+        <div id="logout">
+            <label id="user"></label><br>
+            <!--150.82.177.*** or 192.168.137.1-->
+            &nbsp;&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: QueryString['scan_code'], product_name: QueryString['product_name']})">テスト1</a><br><br>
+            &nbsp;1F7FA&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: '1F7FA', product_name: QueryString['product_name']})">テスト2</a><br><br>
+            &nbsp;3FB78&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: '3FB78', product_name: QueryString['product_name']})">テスト3</a><br><br>
+            &nbsp;1918&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: '1918', product_name: QueryString['product_name']})">テスト4</a><br><br>
+            &nbsp;D125E&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: 'D125E', product_name: QueryString['product_name']})">テスト5</a><br><br>
+            <br>
+        </div>
+        <br>
+    </form>
+</body>
+</html>

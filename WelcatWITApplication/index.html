@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>準備画面</title>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var conn;
+        var result;
+
+        function CheckAssetFile() {
+            conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn != "number") {
+                //subjectテーブル作成
+                result = conn.Execute("CREATE TABLE IF NOT EXISTS " + _SQLITE_SUBJECTTABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, name TEXT);");
+                if (typeof result == "number") {
+                    wit.MsgBox("テーブル作成失敗\rCode:" + result);
+                }
+                else {
+                    result.Close();
+                }
+                result = conn.Execute("SELECT * FROM " + _SQLITE_SUBJECTTABLE + " LIMIT 1;");
+                if (typeof result != "number") {
+                    if (result.Eof()) {
+                        var insert_master = conn.Execute("INSERT INTO " + _SQLITE_SUBJECTTABLE + "(id, name, code) VALUES(1, '" + _ADMIN_NAME + "', '" + _ADMIN_PW + "');");
+                        insert_master.Close();
+                    }
+                    result.Close();
+                }
+                else {
+                    wit.MsgBox("管理者データ作成失敗\rCode:" + result);
+                }
+                //productテーブル作成
+                result = conn.Execute("CREATE TABLE IF NOT EXISTS " + _SQLITE_PRODUCTTABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT, name TEXT, x FLOAT, y FLOAT, z FLOAT);");
+                if (typeof result == "number") {
+                    wit.MsgBox("テーブル作成失敗\rCode:" + result);
+                }
+                else {
+                    result.Close();
+                }
+                //operationテーブル作成
+                result = conn.Execute("CREATE TABLE IF NOT EXISTS " + _SQLITE_OPERATIONTABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT, operation INTEGER, ope_order INTEGER, name TEXT);");
+                if (typeof result == "number") {
+                    wit.MsgBox("テーブル作成失敗\rCode:" + result);
+                }
+                else {
+                    result.Close();
+                }
+                conn.Close();
+            }
+            else {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+            }
+        }
+
+        function CheckDataFile() {
+            conn = wit.OpenDBConnection(_SQLITE_DATAFILENAME);
+            if (typeof conn != "number") {
+                //masterテーブル作成
+                result = conn.Execute("CREATE TABLE IF NOT EXISTS " + _SQLITE_MASTERTABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT, id_subject INTEGER, id_terminal INTEGER, ts_start INTEGER, ts_end INTEGER);");
+                if (typeof result == "number") {
+                    wit.MsgBox("テーブル作成失敗\rCode:" + result);
+                }
+                else {
+                    result.Close();
+                }
+                //datasetテーブル作成
+                result = conn.Execute("CREATE TABLE IF NOT EXISTS " + _SQLITE_DATASETTABLE + "(id INTEGER PRIMARY KEY AUTOINCREMENT, id_master INTEGER, barcode TEXT, ts INTEGER);");
+                if (typeof result == "number") {
+                    wit.MsgBox("テーブル作成失敗\rCode:" + result);
+                }
+                else {
+                    result.Close();
+                }
+                conn.Close();
+            }
+            else {
+                wit.MsgBox("SQLite接続失敗\rCode:" + conn);
+            }
+        }
+
+        //SQLiteファイルやテーブルがない場合は作成する
+        window.onload = function () {
+            CheckAssetFile();
+            CheckDataFile();
+            var id_subject = -1;
+            /*var id_terminal = parseInt(wit.GetEnv("COMMIDTERM"), 10);
+            if (id_terminal === 71) {
+                id_subject = 1;
+            }
+            else if (id_terminal === 72) {
+                id_subject = 2;
+            }
+            else if (id_terminal === 73) {
+                id_subject = 3;
+            }
+            else if (id_terminal === 74) {
+                id_subject = 4;
+            }*/
+            SendForm("home.html", {id_subject: id_subject});
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>

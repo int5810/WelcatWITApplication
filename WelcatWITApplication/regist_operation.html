@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>作業内容の登録</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: relative;
+            top: 0px;
+            left: 0px;
+            width: 240px;
+            height: 240px;
+            font-size: 24px;
+        }
+
+        input.a {
+            font-size: 24px;
+            width: 220px;
+        }
+
+        div {
+            position: relative;
+            top: 180px;
+            left: 0px;
+            height: 60px;
+            width: 240px;
+            text-align: left;
+        }
+
+        input.b {
+            font-size: 24px;
+        }
+
+        input.c {
+            font-size: 16px;
+            width: 220px;
+            height: 20px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        //商品コードを登録する
+        function Regist() {
+            if (!wit.ExistFile("orderlist.txt")) {
+                wit.MsgBox("登録に必要なファイル\r(orderlist.txt)がありません");
+                return;
+            }
+            var fstream = wit.OpenStream("orderlist.txt");
+            if (fstream === null) {
+                wit.MsgBox("CSVが開けませんでした");
+                history.back();
+            }
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn === "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+                history.back();
+            }
+            var success_count = 0;
+            var failure_count = 0;
+            var sum = CheckSum(fstream);
+            fstream.Seek(0);    //先頭に戻す
+            var line = fstream.ReadLine();
+            while (!fstream.Eof()) {   //record !== null
+                var line_split = line.split(":");
+                if (line_split.length !== 2)
+                    break;
+                var operation = line_split[0];
+                var ope_names = line_split[1];
+                ope_names = ope_names.split(",");
+                //operationが元々含まれている場合ははじく
+                var result1 = conn.Execute("SELECT * FROM " + _SQLITE_OPERATIONTABLE + " WHERE operation = " + operation + " LIMIT 1;");
+                if (typeof result1 == "number") {
+                    failure_count++;    //クエリ失敗
+                }
+                else {
+                    if (!result1.Eof()) {
+                        failure_count++;    // 既存
+                    }
+                    else {
+                        //インサート
+                        var success_flag = true;
+                        var result2;
+                        for (var i = 0; i < ope_names.length; i++) {
+                            result2 = conn.Execute("INSERT INTO " + _SQLITE_OPERATIONTABLE + "(operation, ope_order, name) VALUES(" + operation + ", " + (i + 1) + ", '" + ope_names[i] + "');");
+                            if (typeof result2 == "number") {
+                                success_flag = false;
+                                break;
+                            }
+                            else {
+                                result2.Close();
+                            }
+                        }
+                        if (success_flag)
+                            success_count++;
+                        else
+                            failure_count++;
+                    }
+                    result1.Close();
+                }
+                line = fstream.ReadLine();
+                Progress(sum, success_count, failure_count);
+            }
+            conn.Close();
+            fstream.Close();
+            wit.DeleteFile("orderlist.txt");
+            if (failure_count === 0)
+                wit.MsgBox("成功数：" + success_count);
+            else
+                wit.MsgBox("成功数：" + success_count + "\r\n失敗数：" + failure_count);
+            history.back();
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+
+        function CheckSum(fstream){
+            var counter = 0;
+            var record = fstream.ReadRecord();
+            while (!fstream.Eof()) {
+                counter++;
+                record = fstream.ReadRecord();
+            }
+            return counter;
+        }
+
+        function Progress(sum, success_count, failure_count) {
+            var percentage;
+            if (failure_count === 0) {
+                percentage = 100 * success_count / sum;
+                document.getElementById("progress_msg").innerText = percentage.toFixed(2) + "%(" + success_count + ")";
+            }
+            else {
+                percentage = 100 * (success_count + failure_count) / sum;
+                document.getElementById("progress_msg").innerText = percentage.toFixed(2) + "%(" + (success_count + failure_count) + "[, " + failure_count + "])";
+            }
+        }
+    </script>
+</head>
+<body>
+    <form name="register">
+        「orderlist.txt」を登録します<br>
+        テキストファイルは登録後削除されます<br><br>
+        <input class="b" type="button" onclick="ReceiveFile()" value="ファイル受信"><br><br>
+        <input class="b" type="button" onclick="Regist()" value="登録">
+        <label id="progress_msg"></label><br><br>
+        <input class="b" type="button" onclick="javascript:history.back()" value="戻る">
+    </form>
+</body>
+</html>

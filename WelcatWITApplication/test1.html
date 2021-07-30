@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>€”õ‰æ–Ê</title>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        window.onload = function () {
+            var scan_date = new Date();
+            var scan_ut = scan_date.getTime() / 1000;
+            var scan_datetime = ('0' + scan_date.getHours()).slice(-2) + ':' + ('0' + scan_date.getMinutes()).slice(-2) + ':' + ('0' + scan_date.getSeconds()).slice(-2);
+            SendForm("test2.html", { id_terminal:70, id_subject: 123, id_master: 456, scan_ut: scan_ut, scan_datetime: scan_datetime, scan_code: "test_code", product_name: "‚È‚Ü‚¦"});
+        }
+    </script>
+</head>
+<body>
+</body>
+</html>

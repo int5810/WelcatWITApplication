@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>商品ホーム</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        a {
+            font-size: 22px;
+        }
+
+        table {
+            border-collapse: collapse;
+            font-size: 16px;
+            width: 230px;
+        }
+
+        th.id {
+            display: none;
+        }
+
+        td {
+            border: solid 2px;
+            padding: 0.5em;
+        }
+
+        input {
+            font-size: 24px;
+        }
+
+        input.delete {
+            font-size: 20px;
+        }
+
+        label {
+            font-size: 24px;
+        }
+
+        textarea {
+            width: 100px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var id_subject;
+        var offset;
+        var barcode;
+        var product_name;
+        var product_num;
+        var f2_flag;
+
+        function CheckProductNum() {
+            var counter = 0;
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+                return 0;
+            }
+            else {
+                var recordset = conn.Execute("SELECT COUNT(*) FROM " + _SQLITE_PRODUCTTABLE + ";");
+                if (!recordset.Eof()) {
+                    counter = recordset.GetField(0);
+                }
+                recordset.Close();
+            }
+            conn.Close();
+            return counter;
+        }
+
+        function DeleteRow(target) {
+            if (wit.MsgBox("本当に削除しますか", _MSGBOX_BTN_YESNOJP) != 0) {
+                return;
+            }
+            //var row = target.parentNode.parentNode; //削除する行
+            //row.parentNode.deleteRow(row.sectionRowIndex);//ここでしくってる？ブラウザがdeleteRowに対応していないっぽい
+
+            var row = target.parentNode.parentNode;
+            var id_product = row.cells[0].firstChild.data;
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                //subject用テーブルを作成
+                var result = conn.Execute("DELETE FROM " + _SQLITE_PRODUCTTABLE + " WHERE id = " + id_product + ";");
+                if (typeof result == "number") {
+                    wit.MsgBox("DELETE失敗\rCode:" + result);
+                    conn.Close();
+                    return;
+                }
+            }
+            conn.Close();
+
+            row.parentNode.removeChild(row);
+        }
+
+        function Delete() {
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn === "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+                SendForm("product.html", {id_subject: QueryString["id_subject"], offset:1});
+            }
+            if (wit.MsgBox("全商品コード\r情報を削除しますか", _MSGBOX_BTN_YESNOJP) !== 0) {
+                conn.Close();
+                SendForm("product.html", { id_subject: QueryString["id_subject"], offset: 1});
+            }
+            else {
+                var result = conn.Execute("DELETE FROM " + _SQLITE_PRODUCTTABLE);
+                if (typeof result == "number") {
+                    wit.MsgBox("削除に失敗しました。");
+                }
+                else {
+                    wit.MsgBox("削除に成功しました。");
+                }
+                result.Close();
+                conn.Close();
+                SendForm("product.html", {id_subject: QueryString["id_subject"], offset:1});
+                //document.location.reload();テスト予定
+            }
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2" && f2_flag) {
+                SendForm("assets.html", { id_subject: QueryString["id_subject"] });
+            }
+        }
+
+        function ShowDialog() {
+            document.getElementById("query_dialog").style.display = "block";
+            document.getElementById("menu").style.display = "none";
+        }
+
+        function HideDialog() {
+            document.getElementById("query_dialog").style.display = "none";
+            document.getElementById("menu").style.display = "block";
+        }
+
+        function UpdateTable(query_type) {
+            if (query_type === 0) {
+                offset = parseInt(document.getElementById("offset_num").value, 10);
+                if (isNaN(offset)) {
+                    wit.MsgBox("無効な値です。(" + document.getElementById("offset_num").value + ")");
+                    return;
+                }
+            }
+            else if (query_type === 1) {
+                barcode = document.getElementById("barcode").value;
+            }
+            else {
+                product_name = document.getElementById("product_name").value;
+            }
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                var table = document.getElementById("product_table");
+                // 行を追加
+                var sql;
+                if (query_type === 0) {
+                    sql = "SELECT * FROM " + _SQLITE_PRODUCTTABLE + " LIMIT 100";
+                    if (offset !== 1)
+                        sql += " OFFSET " + (100 * (offset - 1));
+                }
+                else if (query_type === 1) {
+                    sql = "SELECT * FROM " + _SQLITE_PRODUCTTABLE + " WHERE code = '" + barcode + "'";
+                }
+                else {
+                    sql = "SELECT * FROM " + _SQLITE_PRODUCTTABLE + " WHERE name = '" + product_name + "'";
+                }
+                var recordset = conn.Execute(sql + ";");
+                while (!recordset.Eof()) {
+                    var row = document.createElement("tr");
+                    var cell_id = row.insertCell(-1);
+                    cell_id.innerHTML = recordset.GetField("id");
+                    var cell_name = row.insertCell(-1);
+                    var name = recordset.GetField("name");
+                    cell_name.innerHTML = '<a href="javascript:ShowDetail(\'' + name + '\', \'\');">' + name + '</a>';
+                    var cell_code = row.insertCell(-1);
+                    var code = recordset.GetField("code");
+                    cell_code.innerHTML = '<a href="javascript:ShowDetail(\'\', \'' + code + '\');">' + code + '</a>';
+                    var cell_button = row.insertCell(-1);
+                    cell_button.innerHTML = "<input type='button' class='delete' value='削除' onclick='DeleteRow(this)'>";
+                    row.firstChild.style.display = "none";
+                    if (id_subject !== "1") {
+                        row.children[3].style.display = "none";
+                    }
+                    table.firstChild.appendChild(row);
+                    recordset.MoveNext();
+                }
+                recordset.Close();
+            }
+            conn.Close();
+        }
+
+        function Reload(query_type) {
+            if (query_type === 0) {
+                offset = parseInt(document.getElementById("offset_num").value, 10);
+                if (isNaN(offset)) {
+                    wit.MsgBox("無効な値です。(" + document.getElementById("offset_num").value + ")");
+                    return;
+                }
+                SendForm("product.html", { id_subject: QueryString["id_subject"], offset: offset });
+            }
+            else if (query_type === 1) {
+                barcode = document.getElementById("barcode").value;
+                SendForm("product.html", { id_subject: QueryString["id_subject"], barcode: barcode });
+            }
+            else {
+                product_name = document.getElementById("product_name").value;
+                SendForm("product.html", { id_subject: QueryString["id_subject"], name: product_name });
+            }
+        }
+
+        function ShowDetail(name, code) {
+            f2_flag = false;
+            var sql;
+            if (name.length !== 0)
+                sql = "SELECT * FROM " + _SQLITE_PRODUCTTABLE + " WHERE name = '" + name + "';";
+            else if (code.length !== 0)
+                sql = "SELECT * FROM " + _SQLITE_PRODUCTTABLE + " WHERE code = '" + code + "';";
+            else {
+                wit.MsgBox("引数のミス");
+                f2_flag = true;
+                return;
+            }
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                var recordset = conn.Execute(sql);
+                if (!recordset.Eof()) {
+                    wit.MsgBox(recordset.GetField("name") + ", " + recordset.GetField("code") + "\r\n" + recordset.GetField("x") + ", " + recordset.GetField("y") + ", " + recordset.GetField("z"));
+                }
+                recordset.Close();
+                conn.Close();
+            }
+            f2_flag = true;
+        }
+
+        window.onload = function () {
+            offset = QueryString["offset"];
+            barcode = QueryString["barcode"];
+            product_name = QueryString["name"];
+            name = QueryString["name"];
+            document.getElementById("query_dialog").style.display = "none";
+            product_num = CheckProductNum();
+            f2_flag = true;
+            if (product_num % 100 === 0)
+                document.getElementById("max_offset").innerText = "/" + Math.floor(product_num / 100);
+            else
+                document.getElementById("max_offset").innerText = "/" + (Math.floor(product_num / 100) + 1);
+            id_subject = QueryString["id_subject"]
+            if (id_subject !== "1") {
+                document.getElementById("admin_div").style.display = "none";
+            }
+            if (offset !== undefined) {
+                document.getElementById("offset_num").value = offset;
+                UpdateTable(0);//ここで横スクロールバーが発生
+            }
+            else if (barcode !== undefined) {
+                document.getElementById("barcode").value = barcode;
+                UpdateTable(1);//ここで横スクロールバーが発生
+            }
+            else {
+                document.getElementById("product_name").value = product_name;
+                UpdateTable(2);//ここで横スクロールバーが発生
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="query_dialog">
+        ページ：<textarea id="offset_num" rows="1"></textarea><label id="max_offset"></label><br>
+        <button onclick="javascript:Reload(0);">実行</button><br>
+        コード：<textarea id="barcode" rows="1"></textarea><br>
+        <button onclick="javascript:Reload(1);">実行</button><br>
+        名前：<textarea id="product_name" rows="1"></textarea><br>
+        <button onclick="javascript:Reload(2);">実行</button><br>
+        <br><button id="hide" onclick="javascript:HideDialog();">非表示</button><br>
+    </div>
+    <div id="menu">
+        <button id="back" onclick="javascript: SendForm('assets.html', {id_subject: QueryString['id_subject']});">戻る</button>
+        &nbsp;&nbsp;&nbsp;<button id="show" onclick="javascript:ShowDialog();">検索</button><br>
+        <div id="admin_div">
+            <hr width="60%" align="center" />
+            <a href="javascript:SendForm('regist_product.html', {id_subject: QueryString['id_subject']});">商品コード登録</a><br>
+            <a href="javascript:Delete();">全データ削除</a><br>
+            <hr width="60%" align="center" />
+        </div>
+        <table id="product_table">
+            <tr style="background:#ccccff">
+                <th class="id">ID</th>
+                <th>商品名</th>
+                <th>番号</th>
+                <th></th>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>

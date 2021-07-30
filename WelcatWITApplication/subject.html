@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>計測者ホーム</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: absolute;
+            top: 20px;
+            left: 0px;
+            width: 240px;
+            height: 240px;
+            font-size: 32px;
+        }
+
+        button {
+            font-size: 24px;
+        }
+
+        a {
+            font-size: 22px;
+        }
+
+        table {
+            border-collapse: collapse;
+            font-size: 20px;
+        }
+
+        th.id {
+            display: none;
+        }
+
+        td {
+            border: solid 2px;
+            padding: 0.5em;
+        }
+
+        input {
+            font-size: 24px;
+        }
+
+        label {
+            font-size: 24px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var id_subject;
+
+        function DeleteRow(target) {
+            if (wit.MsgBox("本当に削除しますか", _MSGBOX_BTN_YESNOJP) != 0) {
+                return;
+            }
+
+            var row = target.parentNode.parentNode;
+            var id_subject = row.cells[0].firstChild.data;
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                //subject用テーブルを作成
+                var result = conn.Execute("DELETE FROM " + _SQLITE_SUBJECTTABLE + " WHERE id = " + id_subject + ";");
+                if (typeof result == "number") {
+                    wit.MsgBox("DELETE失敗\rCode:" + result);
+                    conn.Close();
+                    return;
+                }
+            }
+            conn.Close();
+
+            row.parentNode.removeChild(row);
+        }
+
+        function DeleteAllSubject() {
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn === "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+                SendForm("subject.html", {id_subject: QueryString["id_subject"]});
+            }
+            if (wit.MsgBox("管理者以外の計測者情報を削除しますか", _MSGBOX_BTN_YESNOJP) !== 0) {
+                conn.Close();
+                SendForm("subject.html", {id_subject: QueryString["id_subject"]});
+            }
+            else {
+                var result = conn.Execute("DELETE FROM " + _SQLITE_SUBJECTTABLE + " WHERE id != 1;");
+                if (typeof result == "number") {
+                    wit.MsgBox("削除に失敗しました。");
+                }
+                else {
+                    wit.MsgBox("削除に成功しました。");
+                }
+                result.Close();
+                conn.Close();
+                SendForm("subject.html", {id_subject: QueryString["id_subject"]});
+            }
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+
+        window.onload = function () {
+            id_subject = QueryString["id_subject"];
+            if (id_subject !== "1") {
+                document.getElementById("admin_div").style.display = "none";
+            }
+            //SQLiteコネクション作成
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\r\nCode:" + conn);
+            }
+            else {
+                //subject用テーブルを作成
+                var table = document.getElementById("subject_table");
+                var sql = "SELECT * FROM " + _SQLITE_SUBJECTTABLE;
+                if (id_subject !== "1") {
+                    sql += " LIMIT -1 OFFSET 1"
+                }
+                sql += ";";
+                var recordset = conn.Execute(sql);
+                while (!recordset.Eof()) {
+                    var row = document.createElement("tr");
+                    var cell_id = row.insertCell(-1);
+                    cell_id.innerHTML = recordset.GetField("id");
+                    var cell_name = row.insertCell(-1);
+                    cell_name.innerHTML = recordset.GetField("name");
+                    var cell_code = row.insertCell(-1);
+                    cell_code.innerHTML = recordset.GetField("code");
+                    var cell_button = row.insertCell(-1);
+                    if (id_subject !== "1" || recordset.GetField("id") != 1) {
+                        cell_button.innerHTML = "<input type='button' value='削除' onclick='DeleteRow(this)'>";
+                    }
+                    row.firstChild.style.display = "none";
+                    if (id_subject !== "1") {
+                        row.children[3].style.display = "none";
+                    }
+                    table.firstChild.appendChild(row);
+                    recordset.MoveNext();
+                }
+                recordset.Close();
+            }
+            conn.Close();
+        }
+    </script>
+</head>
+<body>
+    <form name="menu">
+        <button type="button" onclick="history.back()">戻る</button>
+        <br>
+        <div id="admin_div">
+            <hr width="60%" align="center"/>
+            <a href="javascript:SendForm('regist_subject_csv.html', {id_subject: QueryString['id_subject']});">計測者登録(ＣＳＶ)</a><br>
+            <a href="javascript:SendForm('regist_subject.html', {id_subject: QueryString['id_subject']});">計測者登録(手入力)</a><br>
+            <a href="javascript:DeleteAllSubject();">全計測者データ削除</a><br>
+            <hr width="60%" align="center"/>
+        </div>
+        <table id="subject_table">
+            <tr style="background:#ccccff">
+                <th class="id">ID</th>
+                <th>名前</th>
+                <th>番号</th>
+                <th></th>
+            </tr>
+        </table>
+    </form>
+</body>
+</html>

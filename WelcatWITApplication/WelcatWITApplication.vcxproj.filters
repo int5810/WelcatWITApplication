@@ -1,0 +1,27 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <None Include="index.html" />
+    <None Include="wit.js" />
+    <None Include="home.html" />
+    <None Include="export.html" />
+    <None Include="subject.html" />
+    <None Include="regist_subject.html" />
+    <None Include="regist_subject_csv.html" />
+    <None Include="assets.html" />
+    <None Include="product.html" />
+    <None Include="regist_product.html" />
+    <None Include="utilities.js" />
+    <None Include="time_adjust.html" />
+    <None Include="single.html" />
+    <None Include="terminal_info.html" />
+    <None Include="operation.html" />
+    <None Include="regist_operation.html" />
+    <None Include="test_flash.html" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Sample">
+      <UniqueIdentifier>{34ec1e76-f066-48c4-acf4-0772690f7cba}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

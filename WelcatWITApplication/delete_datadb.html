@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>データDB削除ページ</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: relative;
+            top: 0px;
+            left: 0px;
+            width: 240px;
+            height: 240px;
+            font-size: 24px;
+        }
+
+        input.a {
+            font-size: 24px;
+            width: 220px;
+        }
+
+        div {
+            position: relative;
+            top: 180px;
+            left: 0px;
+            height: 60px;
+            width: 240px;
+            text-align: left;
+        }
+
+        input.b {
+            font-size: 24px;
+        }
+
+        input.c {
+            font-size: 16px;
+            width: 220px;
+            height: 20px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        function DeleteDataDBFile() {
+            if (!wit.ExistFile(_SQLITE_DATAFILENAME)) {
+                wit.MsgBox("データDBファイル\r(" + _SQLITE_DATAFILENAME + ")がありません");
+                return;
+            }
+            if (wit.DeleteFile(_SQLITE_DATAFILENAME) == -1) {
+                wit.MsgBox("ファイル削除に失敗しました");
+            }
+            else {
+                wit.MsgBox("ファイル削除に成功しました");
+                wit.PowerOff();
+            }
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+    </script>
+</head>
+<body>
+    <form name="register">
+        計測データ登録用DBを削除します<br>
+        実験本番の直前にでも削除してください<br>
+        削除後は電源が切れます<br><br>
+        <input class="b" type="button" onclick="DeleteDataDBFile()" value="削除"><br><br>
+        <input class="b" type="button" onclick="javascript:history.back()" value="戻る">
+    </form>
+</body>
+</html>

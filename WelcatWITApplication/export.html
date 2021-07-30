@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>エクスポート</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        button {
+            font-size: 16px;
+            width: 178px;
+        }
+
+        a {
+            font-size: 24px;
+        }
+
+        label {
+            color: blue;
+        }
+
+        table {
+            table-layout: auto;
+            border-collapse: collapse;
+            /*font-size: 20px;*/
+        }
+
+        td {
+            border: solid 2px;
+            padding: 0.5em;
+            font-size: 14px;
+        }
+
+        input.radio {
+            font-size: 20px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var data_conn;
+        var assets_conn;
+        var dialog;
+        var list;
+        var target_type;
+
+        function PrepareSpp() {
+            //オープン
+            var result = wit.SppOpen(true);
+            if (result !== 0) {
+                wit.MsgBox("SppOpenエラー：" + result);
+                return false;
+            }
+            //接続
+            result = wit.SppSetRxBreakTime(10000);
+            if (result !== 0) {
+                wit.MsgBox("SppSetRxBreakTimeエラー：" + result);
+                wit.SppClose();
+                return false;
+            }
+            result = wit.SppSetTxBreakTime(10000);
+            if (result !== 0) {
+                wit.MsgBox("SppSetTxBreakTimeエラー：" + result);
+                wit.SppClose();
+                return false;
+            }
+            result = wit.SppConnect(0);
+            if (result === -7) {
+                wit.MsgBox("受信プログラムと通信できません。");
+                wit.SppClose();
+                return false;
+            }
+            else if (result !== 0) {
+                wit.MsgBox("SppConnectエラー：" + result);
+                wit.SppClose();
+                return false;
+            }
+            return true;
+        }
+
+        function PrepareDataConn() {
+            data_conn = wit.OpenDBConnection(_SQLITE_DATAFILENAME);
+            if (typeof data_conn == "number") {
+                wit.MsgBox("SQLite接続失敗\rCode:" + data_conn);
+                wit.SppDisconnect();
+                wit.SppClose();
+                return false;
+            }
+            return true;
+        }
+
+        function PrepareAssetsConn() {
+            assets_conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof assets_conn == "number") {
+                wit.MsgBox("SQLite接続失敗\rCode:" + assets_conn);
+                wit.SppDisconnect();
+                wit.SppClose();
+                return false;
+            }
+            return true;
+        }
+
+        ///.sqlite3ファイルは\0が内部にあり、文字列では送信できないので、結果をCSVにして出力する
+        function ExportDataset(id_master, id_subject, ts_start) {
+            //存在チェック
+            if (!wit.ExistFile(_SQLITE_DATAFILENAME)) {
+                wit.MsgBox(_SQLITE_DATAFILENAME + "が存在しません。");
+                return;
+            }
+
+            if (!PrepareSpp() || !PrepareDataConn())
+                return;
+
+            //情報取得
+            var sql = "SELECT id, id_subject, ts_start FROM " + _SQLITE_MASTERTABLE;
+            if (id_master != -1) {//1計測が対象の場合
+                sql += " WHERE id = " + id_master + ";";
+            }
+            else if (id_subject != -1) {//1作業者が対象の場合
+                sql += " WHERE id_subject = " + id_subject + ";";
+            }
+            else if (ts_start != -1) {//1日が対象の場合
+                sql += " WHERE ts_start BETWEEN " + ts_start + " AND " + (ts_start + 86400) + ";";
+            }
+            else {
+                sql += ";";
+            }
+            var recordset1 = data_conn.Execute(sql);
+            if (typeof recordset1 == "number") {
+                wit.MsgBox("Select(1)失敗\r\nCode:" + recordset1);
+                wit.SppDisconnect();
+                wit.SppClose();
+                data_conn.Close();
+                return;
+            }
+            var result;
+            while (!recordset1.Eof()) {
+                var recordset2 = data_conn.Execute("SELECT barcode, ts FROM " + _SQLITE_DATASETTABLE + " WHERE id_master = " + recordset1.GetField("id") + ";");  //人、バーコード、時間
+                if (typeof recordset2 == "number") {
+                    wit.MsgBox("Select(2)失敗\r\nCode:" + recordset2);
+                    wit.SppDisconnect();
+                    wit.SppClose();
+                    recordset1.Close();
+                    data_conn.Close();
+                    return;
+                }
+                result = wit.SppWrite(recordset1.GetField("id_subject") + "_" + recordset1.GetField("ts_start") + ".csv");//ファイル名の送信
+                if (result < 0) {
+                    wit.MsgBox("SppWriteError");
+                    wit.SppDisconnect();
+                    wit.SppClose();
+                    recordset2.Close();
+                    recordset1.Close();
+                    data_conn.Close();
+                    return;
+                }
+                result = wit.SppRead(2);//ファイル準備完了の受信,OKを受信予定
+                if (result == null) {
+                    wit.MsgBox("SppReadError");
+                    wit.SppDisconnect();
+                    wit.SppClose();
+                    recordset2.Close();
+                    recordset1.Close();
+                    data_conn.Close();
+                    return;
+                }
+                while (!recordset2.Eof()) {
+                    result = wit.SppWrite(recordset2.GetField("ts") + "," + recordset2.GetField("barcode") + "\r\n");
+                    recordset2.MoveNext()
+                }
+                wit.SppWrite("\x1A");
+                wit.SppRead(2);//ファイル受信完了,OKを受信予定
+                recordset2.Close();
+                recordset1.MoveNext();
+            }
+            recordset1.Close();
+            data_conn.Close();
+
+            //切断
+            wit.SppDisconnect();
+            //クローズ
+            wit.SppClose();
+            wit.MsgBox("完了しました。");
+        }
+
+        function ExportMaster() {
+            //存在チェック
+            if (!wit.ExistFile(_SQLITE_DATAFILENAME)) {
+                wit.MsgBox(_SQLITE_DATAFILENAME + "が存在しません。");
+                return;
+            }
+
+            if (!PrepareSpp() || !PrepareDataConn())
+                return;
+
+            //情報取得
+            var recordset = data_conn.Execute("SELECT id_subject, id_terminal, ts_start FROM " + _SQLITE_MASTERTABLE + ";");
+            if (typeof recordset == "number") {
+                wit.MsgBox("Select(1)失敗\rCode:" + recordset);
+                wit.SppDisconnect();
+                wit.SppClose();
+                data_conn.Close();
+                return;
+            }
+            var result = wit.SppWrite("masterdata.csv");
+            if (result < 0) {
+                wit.MsgBox("SppWriteError");
+                wit.SppDisconnect();
+                wit.SppClose();
+                recordset.Close();
+                data_conn.Close();
+                return;
+            }
+            result = wit.SppRead(2);//ファイル名送信完了,OKを受信予定
+            if (result == null) {
+                wit.MsgBox("SppReadError");
+                wit.SppDisconnect();
+                wit.SppClose();
+                recordset.Close();
+                data_conn.Close();
+                return;
+            }
+            while (!recordset.Eof()) {
+                wit.SppWrite(recordset.GetField("id_subject") + "," + recordset.GetField("ts_start") + "," + recordset.GetField("id_terminal") + "\r\n");
+                recordset.MoveNext();
+            }
+            recordset.Close();
+            data_conn.Close();
+
+            wit.SppWrite("\x1A");
+            wit.SppRead(2);//ファイル送信完了,OKを受信予定
+            //切断
+            wit.SppDisconnect();
+            //クローズ
+            wit.SppClose();
+
+            wit.MsgBox("完了しました。");
+        }
+
+        function ExportSubject() {
+            //存在チェック
+            if (!wit.ExistFile(_SQLITE_ASSETSFILENAME)) {
+                wit.MsgBox(_SQLITE_ASSETSFILENAME + "が存在しません。");
+                return;
+            }
+
+            if (!PrepareSpp() || !PrepareAssetsConn())
+                return;
+
+            //情報取得
+            var recordset = assets_conn.Execute("SELECT code, name FROM " + _SQLITE_SUBJECTTABLE + ";");
+            if (typeof recordset == "number") {
+                wit.MsgBox("Select(1)失敗\rCode:" + recordset);
+                wit.SppDisconnect();
+                wit.SppClose();
+                assets_conn.Close();
+                return;
+            }
+            var result = wit.SppWrite("subjectlist.csv");
+            if (result < 0) {
+                wit.MsgBox("SppWriteError");
+                wit.SppDisconnect();
+                wit.SppClose();
+                recordset.Close();
+                assets_conn.Close();
+                return;
+            }
+            result = wit.SppRead(2);//ファイル名送信完了,OKを受信予定
+            if (result == null) {
+                wit.MsgBox("SppReadError");
+                wit.SppDisconnect();
+                wit.SppClose();
+                recordset.Close();
+                assets_conn.Close();
+                return;
+            }
+            while (!recordset.Eof()) {
+                wit.SppWrite(recordset.GetField("code") + "," + recordset.GetField("name") + "\r\n");
+                recordset.MoveNext();
+            }
+            recordset.Close();
+            assets_conn.Close();
+
+            wit.SppWrite("\x1A");
+            wit.SppRead(2);//ファイル送信完了,OKを受信予定
+            //切断
+            wit.SppDisconnect();
+            //クローズ
+            wit.SppClose();
+
+            wit.MsgBox("完了しました。");
+        }
+
+        function ExportProduct() {
+            //存在チェック
+            if (!wit.ExistFile(_SQLITE_ASSETSFILENAME)) {
+                wit.MsgBox(_SQLITE_ASSETSFILENAME + "が存在しません。");
+                return;
+            }
+
+            if (!PrepareSpp() || !PrepareAssetsConn())
+                return;
+
+            //情報取得
+            var recordset = assets_conn.Execute("SELECT code, name FROM " + _SQLITE_PRODUCTTABLE + ";");
+            if (typeof recordset == "number") {
+                wit.MsgBox("Select(1)失敗\rCode:" + recordset);
+                wit.SppDisconnect();
+                wit.SppClose();
+                assets_conn.Close();
+                return;
+            }
+            var result = wit.SppWrite("productlist.csv");
+            if (result < 0) {
+                wit.MsgBox("SppWriteError");
+                wit.SppDisconnect();
+                wit.SppClose();
+                recordset.Close();
+                assets_conn.Close();
+                return;
+            }
+            result = wit.SppRead(2);//ファイル名送信完了,OKを受信予定
+            if (result == null) {
+                wit.MsgBox("SppReadError");
+                wit.SppDisconnect();
+                wit.SppClose();
+                recordset.Close();
+                assets_conn.Close();
+                return;
+            }
+            while (!recordset.Eof()) {
+                wit.SppWrite(recordset.GetField("code") + "," + recordset.GetField("name") + "\r\n");
+                recordset.MoveNext();
+            }
+            recordset.Close();
+            assets_conn.Close();
+
+            wit.SppWrite("\x1A");
+            wit.SppRead(2);//ファイル送信完了,OKを受信予定
+            //切断
+            wit.SppDisconnect();
+            //クローズ
+            wit.SppClose();
+
+            wit.MsgBox("完了しました。");
+            dialog.style.display = "none";
+        }
+
+        function ShowTargetDialog() {
+            list.style.display = "none";
+            dialog.style.display = "block";
+        }
+
+        function HideTargetDialog() {
+            dialog.style.display = "none";
+            list.style.display = "block";
+        }
+
+        function UpdateTable(target) {
+            target_type = target;
+            if (!PrepareDataConn()) {
+                return;
+            }
+            else if (!PrepareAssetsConn()) {
+                data_conn.Close();
+                return;
+            }
+            var table = document.getElementById("target_table");
+            table.style.display = "block";
+            //現在のテーブル内容を消去
+            var tbody = table.firstChild;
+            var rows = tbody.children;
+            while (rows.length > 1) {
+                tbody.removeChild(rows[1]);
+            }
+            //ヘッダ－の変更
+            while (rows[0].children.length > 0) {
+                rows[0].removeChild(rows[0].firstChild);
+            }
+            //テーブルの作成
+            if (target === "subject") {
+                rows[0].style.backgroundColor = "#ccccff";
+                var header_id = rows[0].insertCell(-1);
+                header_id.innerHTML = "ID";
+                header_id.style.display = "none";
+                var header_checkbox = rows[0].insertCell(-1);
+                header_checkbox.innerHTML = "選択";
+                var header_subject = rows[0].insertCell(-1);
+                header_subject.innerHTML = "名前";
+                var subject_dic = {};
+                var subject_dic_record = assets_conn.Execute("SELECT * FROM " + _SQLITE_SUBJECTTABLE);
+                while (!subject_dic_record.Eof()) {
+                    subject_dic["id" + subject_dic_record.GetField("id")] = subject_dic_record.GetField("name");//codeのがいい場合はここを変更
+                    subject_dic_record.MoveNext();
+                }
+                subject_dic_record.Close();
+                var subject_record = data_conn.Execute("SELECT DISTINCT id_subject FROM " + _SQLITE_MASTERTABLE + ";");//こっちではorderいらない
+                while (!subject_record.Eof()) {
+                    var row = table.insertRow(-1);
+                    var cell_id = row.insertCell(-1);
+                    cell_id.style.display = "none";
+                    var cell_checkbox = row.insertCell(-1);
+                    var cell_subject = row.insertCell(-1);
+                    cell_id.innerHTML = "id_subject";
+                    cell_checkbox.innerHTML = "<input type='checkbox'>";
+                    cell_subject.innerHTML = subject_dic["id" + subject_record.GetField("id_subject")];
+                    subject_record.MoveNext();
+                }
+                subject_record.Close();
+            }
+            else if (target === "master") {
+                rows[0].style.backgroundColor = "#ffcccc";
+                var header_id = rows[0].insertCell(-1);
+                header_id.innerHTML = "ID";
+                header_id.style.display = "none";
+                var header_checkbox = rows[0].insertCell(-1);
+                header_checkbox.innerHTML = "選択";
+                var header_subject = rows[0].insertCell(-1);
+                header_subject.innerHTML = "名前";
+                var header_start = rows[0].insertCell(-1);
+                header_start.innerHTML = "開始日時";
+                var subject_dic = {};
+                var subject_dic_record = assets_conn.Execute("SELECT * FROM " + _SQLITE_SUBJECTTABLE);
+                while (!subject_dic_record.Eof()) {
+                    subject_dic["id" + subject_dic_record.GetField("id")] = subject_dic_record.GetField("name");//codeのがいい場合はここを変更
+                    subject_dic_record.MoveNext();
+                }
+                subject_dic_record.Close();
+                var master_record = data_conn.Execute("SELECT id, id_subject, ts_start FROM " + _SQLITE_MASTERTABLE + " ORDER BY ts_start DESC;");
+                while (!master_record.Eof()) {
+                    var row = table.insertRow(-1);
+                    var cell_id = row.insertCell(-1);
+                    cell_id.style.display = "none";
+                    var cell_checkbox = row.insertCell(-1);
+                    var cell_subject = row.insertCell(-1);
+                    var cell_start = row.insertCell(-1);
+                    cell_id.innerHTML = master_record.GetField("id");
+                    cell_checkbox.innerHTML = "<input type='checkbox'>";
+                    cell_subject.innerHTML = subject_dic["id" + master_record.GetField("id_subject")];
+                    var start_date = new Date(master_record.GetField("ts_start") * 1000)
+                    cell_start.innerHTML = start_date.getFullYear() + "/" + ("0" + (start_date.getMonth() + 1)).slice(-2) + "/" + ("0" + start_date.getDate()).slice(-2) + "<br>" + ("0" + start_date.getHours()).slice(-2) + ":" + ("0" + start_date.getMinutes()).slice(-2) + ":" + ("0" + start_date.getSeconds()).slice(-2);
+                    master_record.MoveNext();
+                }
+                master_record.Close();
+            }
+            else if (target === "day") {
+                rows[0].style.backgroundColor = "#ccffcc";
+                var header_id = rows[0].insertCell(-1);
+                header_id.innerHTML = "ID";
+                header_id.style.display = "none";
+                var header_checkbox = rows[0].insertCell(-1);
+                header_checkbox.innerHTML = "選択";
+                var header_start = rows[0].insertCell(-1);
+                header_start.innerHTML = "開始日時";
+                var before_day = "";
+                var day_record = data_conn.Execute("SELECT ts_start FROM " + _SQLITE_MASTERTABLE + " ORDER BY ts_start DESC;");
+                while (!day_record.Eof()) {
+                    var start_date = new Date(day_record.GetField("ts_start") * 1000)
+                    if (before_day !== start_date.getFullYear() + "/" + ("0" + (start_date.getMonth() + 1)).slice(-2) + "/" + ("0" + start_date.getDate()).slice(-2)) {
+                        before_day = start_date.getFullYear() + "/" + ("0" + (start_date.getMonth() + 1)).slice(-2) + "/" + ("0" + start_date.getDate()).slice(-2);
+                        var row = table.insertRow(-1);
+                        var cell_id = row.insertCell(-1);
+                        cell_id.style.display = "none";
+                        var cell_checkbox = row.insertCell(-1);
+                        var cell_start = row.insertCell(-1);
+                        cell_checkbox.innerHTML = "<input type='checkbox'>";
+                        cell_start.innerHTML = before_day;
+                    }                   
+                    day_record.MoveNext();
+                }
+                day_record.Close();
+            }
+            data_conn.Close();
+            assets_conn.Close();
+        }
+
+        function ExportSpecificDataset() {
+            var rows = document.getElementById("target_table").firstChild.children;
+            if (rows.length < 2)
+                return;
+            for (var i = 1; i < rows.length; i++) {
+                var row = rows[i];
+                if (row.children[1].firstChild.checked) {
+                    if (target_type === "subject") {
+                        ExportDataset(-1, row.cells[0].firstChild.data, -1);
+                    }
+                    else if (target_type === "master") {
+                        ExportDataset(row.cells[0].firstChild.data, -1, -1);
+                    }
+                    else if (target_type === "day") {
+                        var start_ymd = row.cells[2].firstChild.data.split("/");
+                        ExportDataset(-1, -1, new Date(parseInt(start_ymd[0], 10), parseInt(start_ymd[1], 10) - 1, parseInt(start_ymd[2], 10)).getTime() / 1000);
+                    }
+                }
+            }
+            
+            HideTargetDialog();
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+        
+        window.onload = function () {
+            document.getElementById("target_table").style.display = "none";
+            dialog = document.getElementById("target_dialog");
+            list = document.getElementById("export_list");
+            dialog.style.display = "none";
+        }
+    </script>
+</head>
+<body>
+    <div id="export_list">
+        <br>
+        <button onclick="javascript:ExportDataset(-1, -1, -1);">全データファイル出力</button><br>
+        <br><br>
+        <button onclick="javascript:ShowTargetDialog();">一部データファイル出力</button><br>
+        <br><br>
+        <button onclick="javascript:ExportMaster();">マスターファイル出力</button><br>
+        <br><br>
+        <button onclick="javascript:ExportSubject();">作業者リスト出力</button><br>
+        <br><br>
+        <button onclick="javascript:ExportProduct();">商品コード一覧出力</button><br>
+        <br><br>
+        <a href="javascript:history.back()">ホームへ戻る</a>
+    </div>
+    <div id="target_dialog">
+        <label onclick="HideTargetDialog()">エクスポートメニューへ戻る</label><br><br>
+        <form id="target">
+            &nbsp;&nbsp;&nbsp;<input type="radio" class="radio" name="target_type" value="subject" onclick="UpdateTable('subject')" />計測者
+            &nbsp;&nbsp;&nbsp;<input type="radio" class="radio" name="target_type" value="master" onclick="UpdateTable('master')" />計測ごと<br><br>
+            &nbsp;&nbsp;&nbsp;<input type="radio" class="radio" name="target_type" value="day" onclick="UpdateTable('day')" />日付<br>
+        </form>
+        <table id="target_table">
+            <tr id="table_header"></tr>
+        </table><br>
+        <button onclick="javascript:ExportSpecificDataset();">データファイルを出力</button>
+    </div>
+</body>
+</html>

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>エクスポート</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        label {
+            font-size: 22px;
+        }
+
+        button {
+            font-size: 16px;
+            width: 178px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        // 時刻合わせを行う
+        function AdjustDate() {
+            var result = wit.SppOpen();
+            if (result !== 0) {
+                wit.MsgBox("SppOpenエラー：" + result);
+                return;
+            }
+            result = wit.SppSetRxBreakTime(10000);
+            if (result !== 0) {
+                wit.MsgBox("SppSetRxBreakTimeエラー：" + result);
+                wit.SppClose();
+                return;
+            }
+            result = wit.SppSetTxBreakTime(10000);
+            if (result !== 0) {
+                wit.MsgBox("SppSetTxBreakTimeエラー：" + result);
+                wit.SppClose();
+                return;
+            }
+            result = wit.SppConnect(0);
+            if (result === -7) {
+                wit.MsgBox("受信プログラムと通信できません。");
+                wit.SppClose();
+                return;
+            }
+            else if (result !== 0) {
+                wit.MsgBox("SppConnectエラー：" + result);
+                wit.SppClose();
+                return;
+            }
+
+            var time_str = wit.SppRead(14);
+            wit.SppDisconnect();
+            wit.SppClose();
+            if (time_str === null) {
+                wit.MsgBox("SppReadエラー");
+                return;
+            }
+            var year = time_str.substring(0, 4);
+            var month = time_str.substring(4, 6);
+            var day = time_str.substring(6, 8);
+            var hour = time_str.substring(8, 10);
+            var minute = time_str.substring(10, 12);
+            var second = time_str.substring(12, 14);
+            if (wit.SetDateTime(year + "/" + month + "/" + day, hour + ":" + minute + ":" + second) == 0) {
+                wit.MsgBox("成功しました。");
+            }
+            else {
+                wit.MsgBox("失敗しました。");
+            }
+            SendForm("time_adjust.html", {id_subject: QueryString["id_subject"]});
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+
+        window.onload = function () {
+            if (QueryString["id_subject"] != 1) {
+                SendForm("home.html", {id_subject: QueryString["id_subject"]});
+            }
+            var now_date = new Date();
+            document.getElementById("now").textContent = now_date.getFullYear() + "/" + (now_date.getMonth() + 1) + "/" + now_date.getDate() +
+                " " + now_date.getHours() + ":" + now_date.getMinutes() + ":" + now_date.getSeconds();
+        }
+    </script>
+</head>
+<body>
+    <br>ページアクセス時の内部時刻<br><br>
+    <label id="now"></label><br><br><br><br>
+    <button onclick="javascript:AdjustDate();">時刻同期</button><br><br><br><br>
+    <button type="button" onclick="history.back()">ホームへ戻る</button>
+</body>
+</html>

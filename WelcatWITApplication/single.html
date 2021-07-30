@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DB書き込み+MQTTプッシュ+コード表示</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: relative;
+            top: 0px;
+            left: 0px;
+            width: 230px;
+            height: 240px;
+            font-size: 24px;
+        }
+
+        label.detail {
+            color: red;
+            font-size: 18px;
+        }
+
+        textarea {
+            background-color: #ffffff;
+            color: #000000;
+            width: 220px;
+        }
+
+        textarea.a {
+            border: none;
+            font-size: 24px;
+        }
+
+        textarea.b {
+            border: solid 2px #000088;
+            font-size: 24px;
+        }
+
+        textarea.c {
+            border: solid 2px #000088;
+            font-size: 22px;
+        }
+
+        textarea.next {
+            color: #25734D;
+            font-size: 20px;
+        }
+
+        textarea.local {
+            color: #FF0000;
+            font-size: 18px;
+        }
+
+        textarea.mqtt {
+            color: #FFA500;
+            font-size: 16px;
+        }
+
+        div {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 200px;
+            padding: 30px 15px;
+            display: none;
+            text-align: center;
+            border: 1px solid #aaa;
+            box-shadow: 2px 2px 4px #888;
+        }
+
+        button.a {
+            font-size: 25px;
+            padding: 5px 20px;
+        }
+
+        button.b {
+            font-size: 25px;
+            padding: 5px 7px;
+        }
+
+        button.c {
+            margin: 7px 0px 0px 0px;
+            width: 60px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onbarcodesinglescan="OnSingleScan();"
+           onkeydown="OnKeyDown();"
+           onkeyup="OnKeyUp();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var xhr;
+        var ret_bar;
+        var x, y, z;
+        var timer_scan;
+        var now_scanning;
+        var start_ut;   //ミリ秒には対応できていない(全部000になる)ようなので、秒単位で管理
+        var scan_date;
+        var data_conn;
+        var assets_conn
+        var id_master;
+        var id_terminal;
+        var dialog;
+        var timer_dialog;
+        var dialog_regist_flag;
+        var dialog_delete_flag;
+        var product_name;
+        var scan_data_list;
+        var next_order;
+        var operation;
+        var ope_order;
+
+        //開始時の処理
+        //バーコードデバイスの起動
+        function Start() {
+            var ret = 0;
+
+            ret = wit.BarcodeOpen();
+            if (ret == 0) {
+                wit.BarcodeSetDecodeMode(_DCM_SINGLE);
+                wit.BarcodeDecodeSwitch(_BCT_MULTI, _BOPT_NOCHECK);
+                wit.BarcodeDecodeSwitch(_BCT_COMPOSITE, _BOPT_IGNORE);
+            }
+            else {
+                wit.ResetAutoLcdOff();
+                wit.Indicator(_INDID_ERROR1);
+                wit.MsgBox("BCRデバイスが起動できませんでした：" + ret);
+            }
+        }
+        Start();
+
+        //フィンガースイッチが押されたときの処理
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "FINGER" && !dialog_regist_flag && !dialog_delete_flag) {
+                if (!now_scanning) {
+                    now_scanning = true;
+                    var ret_scan;
+                    ret_scan = wit.BarcodeScanner(_BCRCMD_DECODEON);
+
+                    if (ret_scan == 0) {
+                        timer_scan = setTimeout("BcrScanOff()", 10000);
+                    }
+                }
+                else {
+                    BcrScanOff();
+                }
+            }
+            else if (wit.GetLastEventKeyName() === "F1") {
+                if (dialog_regist_flag)
+                    ClickRegistYes();
+                else if (dialog_delete_flag)
+                    ClickDeleteYes();
+            }
+            else if (wit.GetLastEventKeyName() === "F2") {
+                if (dialog_regist_flag)
+                    ClickRegistNo();
+                else if (dialog_delete_flag)
+                    ClickDeleteNo();
+                else if (scan_date != 0)
+                    ShowDeleteDialog();
+            }
+        }
+
+        //シングルスキャン成功時の処理
+        function OnSingleScan() {
+            wit.Indicator(_INDID_NOTICE3);
+            wit.BarcodeScanner(_BCRCMD_DECODEOFF);
+
+            ret_bar = wit.BarcodeGetDecodeData(0);
+
+            now_scanning = false;
+            clearTimeout(timer_scan);
+            wit.BarcodeEmptyDecodeData();
+            if (typeof ret_bar === "string") {
+                wit.ResetAutoLcdOff();
+                if (ret_bar.substring(0, 4) === "AIST") {
+                    scan_date = new Date();
+                    CheckProductName();
+                    ClickRegistYes();//ShowRegistDialog();
+                }
+                /*else if (ret_bar.length === 10) {
+                    scan_date = new Date();
+                    CheckProductNameTnps();
+                    ClickRegistYes();//ShowRegistDialog();
+                }*/
+            }
+        }
+
+        //エイマーをオフする
+        function BcrScanOff() {
+            now_scanning = false;
+            clearTimeout(timer_scan);
+            wit.BarcodeScanner(_BCRCMD_DECODEOFF);
+        }
+
+        //中継PCへの初回接続テスト
+        function Connect2RelayServer() {
+            xhr = new XMLHttpRequest();
+            xhr.open("GET", "http://" + _MQTT_PUBLISHER + "/?id_terminal=" + id_terminal + "&id_subject=" + id_subject, true);
+            xhr.send();
+            var start = new Date();
+            while (new Date() - start < 10000) {
+                if (xhr.status === 200)
+                    break;
+            }
+            if (xhr.status === 200) {
+                return;
+            }
+            xhr.abort();
+            xhr = null;
+        }
+
+        function UpdateRegistInfomation(next_msg, local_msg, mqtt_msg) {
+            document.barcode.next_msg.value = "次：" + next_msg;
+            document.barcode.local_msg.value = "ＤＢ:" + local_msg;
+            document.barcode.mqtt_msg.value = "MQTT:" + mqtt_msg;
+        }
+
+        function UpdateScanInformation(datetime, name, barcode) {
+            document.barcode.time.value = "時刻:" + datetime;
+            document.barcode.code.value = name + "\n(" + barcode + ")";
+        }
+
+        function CheckProductName() {
+            x = null;
+            y = null;
+            z = null;
+            if (typeof assets_conn === "number") {
+                product_name = "NO DATA";//DBつながらなかった場合の名前
+            }
+            else {
+                var recordset = assets_conn.Execute("SELECT name, x, y, z FROM " + _SQLITE_PRODUCTTABLE + " WHERE code = '" + ret_bar + "';");
+                if (typeof recordset === "number") {
+                    product_name = "no data";//SQL失敗した場合の名前
+                }
+                else {
+                    if (recordset.Eof()) {
+                        product_name = "No Data";//データなかった場合の名前
+                    }
+                    else {
+                        product_name = recordset.GetField("name");
+                        x = recordset.GetField("x");    //DBに登録がない場合はnull
+                        y = recordset.GetField("y");
+                        z = recordset.GetField("z");
+                    }
+                    recordset.Close();
+                }
+            }
+        }
+
+        /*function CheckProductNameTnps() {
+            x = null;
+            y = null;
+            z = null;
+            product_name = ret_bar.substring(0, 2) + "-" + ret_bar.substring(2, 4) + "-" + ret_bar.substring(4, 6);
+        }*/
+
+        //dialogにスキャンした情報を表示する
+        function ShowRegistDialog() {
+            document.getElementById("yes").onclick = ClickRegistYes;
+            document.getElementById("no").onclick = ClickRegistNo;
+            dialog_regist_flag = true;
+            document.getElementById("dialog_msg").innerHTML = "スキャンデータを<br>登録しますか";
+            document.getElementById("detail").textContent = "コード：" + ret_bar + "\n名前：" + product_name;
+            dialog.style.display = "block";
+            document.getElementById("end").style.display = "none";
+            document.barcode.style.display = "none";
+            timer_dialog = setTimeout("ClickRegistYes()", 5000);
+        }
+
+        function ClickRegistYes() {
+            //wit.MsgBox("強度:" + wit.GetEnv("SMETER") + "\r品質:" + wit.GetEnv("LQMETER"));
+            //HTMLの制御
+            dialog_regist_flag = false;
+            clearTimeout(timer_dialog);
+            dialog.style.display = "none";
+            document.barcode.style.display = "block";
+            document.getElementById("end").style.display = "block";
+            var scan_ut = scan_date.getTime() / 1000;
+            var scan_datetime = ('0' + scan_date.getHours()).slice(-2) + ':' + ('0' + scan_date.getMinutes()).slice(-2) + ':' + ('0' + scan_date.getSeconds()).slice(-2);
+            //DB書き込み
+            var db_msg;
+            var result = data_conn.Execute("INSERT INTO " + _SQLITE_DATASETTABLE + "(id_master, barcode, ts) VALUES(" + id_master + ", '" + ret_bar + "', " + scan_ut + ");");
+            if (typeof result === "number") {
+                wit.MsgBox("データ登録エラー\rCode:" + result);
+                db_msg = "失敗しました(" + result + ")";
+            }
+            else {
+                result.Close();
+                db_msg = "登録しました";
+            }
+            //次の指示内容
+            if (operation > 0) {
+                //行った作業が正しいか確認
+                result = assets_conn.Execute("SELECT name FROM " + _SQLITE_OPERATIONTABLE + " WHERE operation = " + operation + " AND ope_order = " + ope_order + " LIMIT 1;");
+                if (!result.Eof()) {
+                    var correct_order = result.GetField("name");
+                    if (correct_order === ret_bar || correct_order === product_name) {
+                        ope_order++;
+                        result.Close();
+                        result = assets_conn.Execute("SELECT name FROM " + _SQLITE_OPERATIONTABLE + " WHERE operation = " + operation + " AND ope_order = " + ope_order + " LIMIT 1;");
+                        next_order = result.GetField("name");
+                    }
+                    else {
+                        next_order = "Miss (" + correct_order + ")";
+                    }
+                }
+                result.Close();
+            }
+            //MQTTブローカーへプッシュするHTMLにアクセス
+            var param_array = {};
+            param_array["id_terminal"] = id_terminal;
+            param_array["id_subject"] = id_subject;
+            param_array["id_master"] = id_master;//ここは計測者ではなく端末名になるかも
+            param_array["scan_ut"] = scan_ut;
+            param_array["scan_datetime"] = scan_datetime;//一応送信
+            param_array["scan_code"] = ret_bar;
+            param_array["product_name"] = product_name;//一応送信
+            if (x != null)
+                param_array["x"] = x;
+            if (y != null)
+                param_array["y"] = y;
+            if (z != null)
+                param_array["z"] = z;
+            var mqtt_msg;
+            if (_RETRY_PUBLISH) {
+                result = SendFormsXHR("http://" + _MQTT_PUBLISHER + "/", param_array);
+                if (result > 0) {
+                    mqtt_msg = result + "件送信しました";
+                    wit.Vibrator(1, 200);
+                    wit.Indicator(_INDID_NOTICE3);
+                }
+                else {
+                    if (result === 0)
+                        mqtt_msg = "送信に失敗しました";
+                    else if (result === -1)
+                        mqtt_msg = "一部送信に失敗しました";
+                    else
+                        mqtt_msg = "想定外の結果(" + result + ")";
+                    wit.Indicator(_INDID_ERROR2); //振動付き
+                }
+            }
+            else {
+                if (SendFormXHR("http://" + _MQTT_PUBLISHER + "/", param_array)) {
+                    mqtt_msg = "1件送信しました";
+                    wit.Vibrator(1, 200);
+                    wit.Indicator(_INDID_NOTICE3);
+                }
+                else {
+                    mqtt_msg = "送信に失敗しました";
+                    wit.Indicator(_INDID_ERROR2); //振動付き
+                }
+            }
+            //画面に表示
+            UpdateScanInformation(scan_datetime, product_name, ret_bar);
+            UpdateRegistInfomation(next_order, db_msg, mqtt_msg);
+        }
+
+        function ClickRegistNo() {
+            dialog_regist_flag = false;
+            clearTimeout(timer_dialog);
+            dialog.style.display = "none";
+            document.barcode.style.display = "block";
+            document.getElementById("end").style.display = "block";
+            UpdateRegistInfomation(next_order, "キャンセルしました", "送信をキャンセルしました");
+        }
+
+        function ShowDeleteDialog() {
+            document.getElementById("yes").onclick = ClickDeleteYes;
+            document.getElementById("no").onclick = ClickDeleteNo;
+            document.getElementById("dialog_msg").innerHTML = "最新データを<br>消去しますか";
+            document.getElementById("detail").textContent = "";
+            dialog.style.display = "block";
+            document.getElementById("end").style.display = "none";
+            document.barcode.style.display = "none";
+            dialog_delete_flag = true;
+        }
+
+        function ClickDeleteYes() {
+            // データ削除
+            var scan_ut = scan_date.getTime() / 1000;
+            result = data_conn.Execute("DELETE FROM " + _SQLITE_DATASETTABLE + " WHERE id_master = " + id_master + " AND ts = " + scan_ut + ";");
+            if (typeof result === "number") {
+                wit.MsgBox("データ消去エラー\r\nCode:" + result);
+            }
+            else {
+                // インフォの更新
+                var recordset1 = data_conn.Execute("SELECT barcode, ts FROM " + _SQLITE_DATASETTABLE + " WHERE id_master = " + id_master + " ORDER BY ts DESC LIMIT 1;");
+                if (typeof recordset1 === "number") {
+                    wit.MsgBox("マスターSELECT失敗\r\nCode:" + recordset1);
+                }
+                else {
+                    var datetime, ut, name, barcode;
+                    if (recordset1.Eof()) {
+                        datetime = "";
+                        ut = "";
+                        name = "商品名";
+                        barcode = "(コード)";
+                        scan_date = 0;
+                        UpdateRegistInfomation(next_order, "全件消去しました", "");
+                    }
+                    else {
+                        //時刻
+                        ut = parseInt(recordset1.GetField("ts"));
+                        scan_date = new Date(ut * 1000);
+                        datetime = ('0' + scan_date.getHours()).slice(-2) + ':' + ('0' + scan_date.getMinutes()).slice(-2) + ':' + ('0' + scan_date.getSeconds()).slice(-2);
+                        //バーコード内容
+                        barcode = recordset1.GetField("barcode");
+                        if (typeof assets_conn === "number") {
+                            name = "NO DATA";//DBつながらなかった場合の名前
+                        }
+                        else {
+                            var recordset2 = assets_conn.Execute("SELECT name FROM " + _SQLITE_PRODUCTTABLE + " WHERE code = '" + barcode + "';");
+                            if (typeof recordset2 === "number") {
+                                name = "no data";//SQL失敗した場合の名前
+                            }
+                            else {
+                                if (recordset2.Eof()) {
+                                    name = "No Data";//データなかった場合の名前
+                                }
+                                else {
+                                    name = recordset2.GetField(0);
+                                }
+                                recordset2.Close();
+                            }
+                        }
+                        recordset1.Close();
+                        UpdateRegistInfomation(next_order, "1件消去しました", "");
+                    }
+                }
+                dialog_delete_flag = false;
+                dialog.style.display = "none";
+                document.barcode.style.display = "block";
+                document.getElementById("end").style.display = "block";
+                UpdateScanInformation(datetime, name, barcode);
+            }
+        }
+
+        function ClickDeleteNo() {
+            dialog_delete_flag = false;
+            dialog.style.display = "none";
+            document.barcode.style.display = "block";
+            document.getElementById("end").style.display = "block";
+            UpdateRegistInfomation(next_order, "消去しませんでした", "");
+        }
+
+        
+        function SendFormXHR(url, param_array) {
+            var is_first = true;
+            for (var key in param_array) {
+                if (is_first) {
+                    url += "?" + key + "=" + param_array[key];
+                    is_first = false;
+                }
+                else
+                    url += "&" + key + "=" + param_array[key];
+            }
+
+            if (parseInt(wit.GetEnv("SMETER")) <= _SMETER_THRESHOLD ||
+                parseInt(wit.GetEnv("LQMETER")) <= _LQMETER_THRESHOLD) {
+                return false;
+            }
+            xhr = new XMLHttpRequest();
+            //xhr.open("GET", url, true);
+            //xhr.timeout = 5000;
+            //xhr.onerror = function (e) {
+            //    wit.MsgBox("error:" + xhr.statusText);
+            //};
+            //xhr.onload = function (e) {
+            //    wit.MsgBox("load:" + xhr.statusText);
+            //};
+            //xhr.onloadend = function (e) {
+            //    wit.MsgBox("loadend:" + xhr.statusText);
+            //};
+            //xhr.ontimeout = function (e) {
+            //    wit.MsgBox("timeout:" + xhr.statusText);
+            //};
+            xhr.open("GET", url, true);
+            xhr.send();
+            //setTimeout("CheckStatus()", 5000); // sendの前でもダメ
+            var start = new Date();
+            while (new Date() - start < 5000) {
+                if (xhr.status === 200)
+                    break;
+            }
+            if (xhr.status === 200) {
+                return true;
+            }
+            xhr.abort();
+            xhr = null;
+            return false;
+        }
+
+        function SendFormsXHR(url, param_array) {
+            scan_data_list.push(param_array);
+            var first_num = scan_data_list.length;
+            while (scan_data_list.length !== 0) {
+                var regist_data = scan_data_list[0];
+                if (parseInt(wit.GetEnv("SMETER")) <= _SMETER_THRESHOLD ||
+                    parseInt(wit.GetEnv("LQMETER")) <= _LQMETER_THRESHOLD) {
+                    break;
+                }
+                if (SendFormXHR(url, regist_data))
+                    scan_data_list.shift();
+            }
+            if (scan_data_list.length === 0)
+                return first_num;   //全部送信完了
+            if (scan_data_list.length === first_num)
+                return 0;   //全部未送信
+            return -1;   //一部送信完了
+        }
+
+        function CheckStatus() {
+            if (xhr != null && xhr.status !== 200) {
+                //print("abort:" + status);// 4～20+4秒後に表示される
+                xhr.abort();
+            }
+            else {
+                ;//print("ok");
+            }
+            xhr = null;
+        }
+
+        //html読み込み完了時にファイル名を表示する
+        window.onload = function () {
+            //変数の初期化
+            now_scanning = false;
+            scan_date = 0;
+            dialog = document.getElementById("dialog");
+            dialog_regist_flag = false;
+            dialog_delete_flag = false;
+            id_terminal = parseInt(wit.GetEnv("COMMIDTERM"), 10);
+            scan_data_list = [];
+            operation = parseInt(QueryString["operation"], 10);
+            ope_order = 1;
+            next_order = "";
+            //id_masterを決定
+            id_master = -1;
+            var date = new Date();
+            start_ut = date.getTime() / 1000;   //ミリ秒を秒に
+            data_conn = wit.OpenDBConnection(_SQLITE_DATAFILENAME);
+            if (typeof data_conn === "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + data_conn);
+            }
+            else {
+                //マスターテーブルへ登録
+                var recordset1 = data_conn.Execute("INSERT INTO " + _SQLITE_MASTERTABLE + "(id_subject, id_terminal, ts_start) VALUES(" + id_subject + ", " + id_terminal + ", " + start_ut + ");");
+                if (typeof recordset1 === "number") {
+                    wit.MsgBox("マスターInsert失敗\r\nCode:" + recordset1);
+                }
+                //マスターテーブルからIDを取得
+                var recordset2 = data_conn.Execute("SELECT id FROM " + _SQLITE_MASTERTABLE + " WHERE id_terminal = " + id_terminal + " AND ts_start = " + start_ut + ";");
+                if (typeof recordset2 === "number") {
+                    wit.MsgBox("マスターSelect失敗\r\nCode:" + recordset2);
+                }
+                else {
+                    id_master = recordset2.GetField(0);
+                    recordset2.Close();
+                }
+            }
+            //中継PCへの接続テスト
+            Connect2RelayServer();
+            //画面に初期情報を表示
+            assets_conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            if (typeof assets_conn == "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + assets_conn);
+            }
+            if (operation > 0) {
+                if (typeof assets_conn != "number") {
+                    var result = assets_conn.Execute("SELECT name FROM " + _SQLITE_OPERATIONTABLE + " WHERE operation = " + operation + " AND ope_order = 1;");
+                    next_order = result.GetField("name");
+                    result.Close();
+                }
+            }
+            UpdateRegistInfomation(next_order, "", "");
+            UpdateScanInformation("", "商品名", "コード");
+            document.getElementById("end").innerHTML = "終了(" + id_master + ")";
+        }
+
+        //終了処理
+        window.onunload = function () {
+            if (typeof data_conn !== "number") {
+                var result = data_conn.Execute("UPDATE " + _SQLITE_MASTERTABLE + " SET ts_end = " + (new Date()).getTime() / 1000 + " WHERE id_terminal = " + id_terminal + " AND ts_start = " + start_ut + ";");
+                if (typeof result === "number") {
+                    wit.MsgBox("マスターSelect失敗\r\nCode:" + result);
+                }
+                else {
+                    result.Close();
+                }
+                data_conn.Close();
+            }
+            if (typeof assets_conn !== "number") {
+                assets_conn.Close();
+            }
+            clearTimeout(timer_scan);
+            wit.BarcodeClose();
+        };
+
+        function Back() {
+            if (wit.MsgBox("計測を終了します\r\nよろしいですか", _MSGBOX_BTN_YESNOJP) === _MSGBOX_RTN_BUTTON1) {
+                SendForm("file:///F:home.html", { id_subject: id_subject });
+            }
+        }
+    </script>
+</head>
+<body>
+    <div id="dialog">
+        <p id="dialog_msg"></p>
+        <label id="detail" class="detail"></label><br>
+        <br>
+        <button id="yes" class="a">はい</button>
+        &nbsp;<button id="no" class="b">いいえ</button>
+    </div>
+    <form name="barcode">
+        <textarea name="next_msg" class="next" rows="1" readonly></textarea><br>
+        <textarea name="local_msg" class="local" rows="1" readonly></textarea><br>
+        <textarea name="mqtt_msg" class="mqtt" rows="1" readonly></textarea><br>
+        前回の記録内容<br>
+        <textarea name="time" rows="1" cols="11" class="b" readonly></textarea>
+        <textarea name="code" rows="2" cols="15" class="c" readonly></textarea>
+    </form>
+    <button id="end" class="c" onclick="javascript:Back();">終了</button>
+</body>
+</html>

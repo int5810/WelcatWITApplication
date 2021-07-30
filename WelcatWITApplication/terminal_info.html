@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>端末情報</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        label {
+            font-size: 24px;
+            color: blue;
+        }
+
+        table {
+            table-layout: auto;
+            border-collapse: collapse;
+            /*font-size: 20px;*/
+        }
+
+        td {
+            border: solid 2px;
+            padding: 0.5em;
+            font-size: 14px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onkeydown="OnKeyDown();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var table;
+
+        function AddRow(title, value) {
+            var row = table.insertRow(-1);
+            var cell_title = row.insertCell(-1);
+            cell_title.innerHTML = title;
+            var cell_value = row.insertCell(-1);
+            cell_value.innerHTML = value;
+        }
+
+        function OnKeyDown() {
+            if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+
+        window.onload = function () {
+            table = document.getElementById("info_table");
+
+            AddRow("端末ID", wit.GetEnv("COMMIDTERM"));
+            AddRow("IPアドレス", wit.GetEnv("IPADDRESS"));
+            AddRow("AP電波強度<br>閾値", _SMETER_THRESHOLD);
+            AddRow("AP通信品質<br>閾値", _LQMETER_THRESHOLD);
+            AddRow("MQTT再送信設定", _RETRY_PUBLISH);
+            AddRow("MQTT<br>中継アドレス", _MQTT_PUBLISHER);
+            AddRow("MQTTブローカー", _MQTT_BROKER);
+            AddRow("APチャンネル", wit.GetEnv("SYNCCHNL"));
+            var bt_num = wit.GetEnv("BDDEFAULTNO");
+            AddRow("BTデフォルト<br>番号", bt_num);
+            AddRow("BTデフォルト<br>デバイス名", wit.GetEnv("BDNAME" + bt_num));
+            AddRow("BTデフォルト<br>アドレス", wit.GetEnv("BDADDR" + bt_num));
+            AddRow("サブネット<br>マスク", wit.GetEnv("SUBNET"));
+            AddRow("ゲートウェイ", wit.GetEnv("GATEWAY"));
+            AddRow("プライマリ<br>DNS", wit.GetEnv("PRIMARYDNS"));
+            AddRow("セカンダリ<br>DNS", wit.GetEnv("SECONDARYDNS"));
+            AddRow("FTPサーバー", wit.GetEnv("FTPADDRESS"));
+            AddRow("FTP<br>ログイン名", wit.GetEnv("FTPNAME"));
+            AddRow("OS ver", wit.GetEnv("OSVER"));
+        }
+    </script>
+</head>
+<body>
+    <label onclick="javascript:history.back();">ホームへ戻る</label>
+    <br><br>
+    <table id="info_table">
+        <tr id="info_header"></tr>
+    </table>
+</body>
+</html>

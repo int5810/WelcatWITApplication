@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>計測者の登録</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: relative;
+            top: 0px;
+            left: 0px;
+            width: 240px;
+            height: 240px;
+            font-size: 24px;
+        }
+
+        input.a {
+            font-size: 24px;
+            width: 220px;
+        }
+
+        div {
+            position: relative;
+            top: 180px;
+            left: 0px;
+            height: 60px;
+            width: 240px;
+            text-align: left;
+        }
+
+        input.b {
+            font-size: 24px;
+        }
+
+        input.c {
+            font-size: 16px;
+            width: 220px;
+            height: 20px;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           onbarcodesinglescan="OnSingleScan();"
+           onkeydown="OnKeyDown();"
+           onkeyup="OnKeyUp();"
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script>
+        var timer_scan;
+
+        //開始時の処理
+        //バーコードデバイスの起動
+        function Start() {
+            var ret = 0;
+
+            ret = wit.BarcodeOpen();
+            if (ret == 0) {
+                wit.BarcodeSetDecodeMode(_DCM_SINGLE);
+                wit.BarcodeDecodeSwitch(_BCT_MULTI, _BOPT_NOCHECK);
+                wit.BarcodeDecodeSwitch(_BCT_COMPOSITE, _BOPT_IGNORE);
+                fs = wit.OpenStream(start_ut + ".txt");
+                if (fs != null) {
+                    fs.Close();
+                }
+                else {
+                    wit.MsgBox("出力用ファイルを開けませんでした");
+                }
+            }
+            else {
+                wit.ResetAutoLcdOff();
+                wit.Indicator(_INDID_ERROR1);
+                wit.MsgBox("BCRデバイスが起動できませんでした：" + ret);
+            }
+        }
+        Start();
+
+        //フィンガースイッチが押されたときの処理
+        function OnKeyDown() {
+            var ret_scan;
+
+            if (wit.GetLastEventKeyName() == "FINGER") {
+                ret_scan = wit.BarcodeScanner(_BCRCMD_DECODEON);
+
+                if (ret_scan == 0) {
+                    timer_scan = setTimeout("BcrScanOff()", 10000);
+                }
+            }
+            else if (wit.GetLastEventKeyName() === "F2") {
+                history.back();
+            }
+        }
+
+        //シングルスキャン成功時の処理
+        function OnSingleScan() {
+            var ret_bar;
+
+            wit.Indicator(_INDID_NOTICE3);
+            wit.BarcodeScanner(_BCRCMD_DECODEOFF);
+
+            ret_bar = wit.BarcodeGetDecodeData(0);
+
+            clearTimeout(timer_scan);
+            wit.BarcodeEmptyDecodeData();
+
+            if (typeof ret_bar == "string") {
+                wit.ResetAutoLcdOff();
+                document.register.code.value = ret_bar;
+            }
+        }
+
+        //エイマーをオフする
+        function BcrScanOff() {
+            clearTimeout(timer_scan);
+            wit.BarcodeScanner(_BCRCMD_DECODEOFF);
+        }
+
+        //subjectを登録する
+        function Regist() {
+            if (!document.register.name.value) {
+                wit.MsgBox("名前が入力されていません");
+                return;
+            }
+            //接続
+            var conn = wit.OpenDBConnection(_SQLITE_ASSETSFILENAME);
+            //id_subjectを決定
+            if (typeof conn == "number") {
+                wit.MsgBox("SQLite接続失敗\nCode:" + conn);
+                conn.Close();
+                return;
+            }
+            else {
+                var result = conn.Execute("INSERT INTO " + _SQLITE_SUBJECTTABLE + "(name, code) VALUES('" + document.register.name.value + "', '" + document.register.code.value + "');");
+                //var result = conn.Execute("INSERT INTO " + _SQLITE_SUBJECTTABLE + "(name, code) VALUES('飯村晃平', '100000006');");
+                result.Close();
+            }
+            conn.Close();
+            //location.href = "subject.html";
+            clearTimeout(timer_scan);
+            wit.BarcodeClose();
+            SendForm("subject.html", {id_subject: QueryString["id_subject"]});
+        }
+
+        function Back() {
+            //buttonからの呼び出しではonunloadイベントが発生しない?
+            clearTimeout(timer_scan);
+            wit.BarcodeClose();
+            history.back();
+        }
+    </script>
+</head>
+<body>
+    <form name="register">
+        名前<br>
+        <input class="a" type="text" name="name"><br>
+        番号<br>
+        <input class="c" type="text" name="code"><br>
+        <input class="b" type="button" onclick="Regist()" value="登録">
+        <input class="b" type="button" onclick="Back()" value="戻る">
+    </form>
+</body>
+</html>

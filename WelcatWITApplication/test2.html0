@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ホーム</title>
+    <style type="text/css">
+        html, body {
+            width: 100%;
+            height: 100%;
+        }
+
+        form {
+            position: absolute;
+            top: 0px;
+            left: 0px;
+            width: 600px;
+            height: 240px;
+            font-size: 32px;
+        }
+
+        input.a {
+            font-size: 24px;
+            width: 150px;
+        }
+
+        input.b {
+            font-size: 22px;
+        }
+
+        label {
+            font-size: 24px;
+        }
+
+        div {
+            display: none;
+        }
+    </style>
+    <embed name="wit" type="application/x-welcat-wearable-terminal" hidden
+           delay="100" width="0" height="0">
+    <script type="text/javascript" src="wit.js"></script>
+    <script type="text/javascript" src="utilities.js"></script>
+    <script type="text/javascript" src="thread.js"></script>
+    <script type="text/javascript" src="jquery-3.5.1.min.js"></script>
+    <script>
+        var xhr;
+        var nowSending;
+
+        function SendFormXHR(url, param_array) {
+            if (nowSending) {
+                print("送信中");
+                return;
+            }
+            nowSending = true;
+
+            var is_first = true;
+            for (var key in param_array) {
+                if (is_first) {
+                    url += "?" + key + "=" + param_array[key];
+                    is_first = false;
+                }
+                else
+                    url += "&" + key + "=" + param_array[key];
+            }
+
+            xhr = new XMLHttpRequest();
+            xhr.open("GET", url, true);//非同期設定が効いていない？
+            xhr.timeout = 3000; //エラーにはならないけど、働いてくれない
+            xhr.onloadend = function (e) {  // これが最後に呼ばれる、これも働いてくれない
+                print("loadend:" + xhr.statusText + "," + xhr.status + "," + xhr.responseText);
+                nowSending = false;
+            };
+            xhr.send();
+            setTimeout("CheckStatus()", 4000);
+            print("setTimeout");
+        }
+
+        var thread;
+        function SendFormXHRThread(url, param_array) {
+            if (nowSending) {
+                print("送信中");
+                return;
+            }
+            nowSending = true;
+
+            var is_first = true;
+            for (var key in param_array) {
+                if (is_first) {
+                    url += "?" + key + "=" + param_array[key];
+                    is_first = false;
+                }
+                else
+                    url += "&" + key + "=" + param_array[key];
+            }
+
+            thread = new Thread(function (_url) {
+                xhr = new XMLHttpRequest();
+                xhr.open("GET", _url, false);
+                xhr.timeout = 3000; //エラーにはならないけど、働いてくれない
+                console.log("send");
+                xhr.send();
+                console.log("end");
+                return xhr.status;
+            });
+            print("thread start");
+            thread.once(url).done(function (d) {
+                Test(d);
+            });
+            print("thread end");
+            setTimeout("CheckStatus2()", 4000);
+        }
+
+        function SendFormXHRJquery(url, param_array) {
+            $.ajax({
+                url: url,
+                type: 'GET',
+                data: param_array,
+                timeout: 3000
+            })
+                // Ajaxリクエストが成功した時発動
+                .done((data) => {
+                    //$('.result').html(data);
+                    print("done:" + data);
+                })
+                // Ajaxリクエストが失敗した時発動
+                .fail((data) => {
+                    //$('.result').html(data);
+                    print("fail:" + data);
+                })
+                // Ajaxリクエストが成功・失敗どちらでも発動
+                .always((data) => {
+                });
+        }
+
+        var result;
+        function Test(d) {
+            print("d:" + d);
+            result = d;
+            print("result:" + result);
+            nowSending = false;
+        }
+
+        //fetchが端末で使用不可
+        function SendFormFetch(url, param_array) {
+            var is_first = true;
+            for (var key in param_array) {
+                if (is_first) {
+                    url += "?" + key + "=" + param_array[key];
+                    is_first = false;
+                }
+                else
+                    url += "&" + key + "=" + param_array[key];
+            }
+            print("fetch");
+            fetch(url, {
+                method: "GET"
+            })
+                .then(response => response.text())
+                .then(text => print(text))
+                .catch(error => print("error:" + error));
+        }
+
+        function CheckStatus() {
+            print("xhr.status:" + xhr.status);  // 4～20+4秒後に表示される
+            nowSending = false;
+        }
+
+        function CheckStatus2() {
+            if (nowSending) {
+                print("thread:" + typeof thread);
+                thread.terminate();
+                print("check ng");
+                nowSending = false;
+            }
+            else
+                print("check ok");
+        }
+
+        window.onload = function () {
+            var test_xhr = new XMLHttpRequest();
+            for (var n in test_xhr) {
+                print(n)
+            }
+
+            var methods = ["setTimeout", "UNSENT", "OPENED", "HEADERS_RECEIVED", "LOADING", "DONE", "onreadystatechange", "readyState", "timeout", "withCredentials", "upload", "responseURL", "status", "statusText", "responseType", "response", "responseText", "responseXML", "open", "setRequestHeader", "send", "abort", "getResponseHeader", "getAllResponseHeaders", "overrideMimeType"]
+            for (var i = 0; i < methods.length; i++) {
+                print(methods[i] + ":" + (methods[i] in XMLHttpRequest.prototype));
+            }
+
+            nowSending = false;
+            var id_subject = QueryString["id_subject"];
+            if (typeof id_subject === "undefined" || id_subject < 0) {   //非ログイン時
+                document.getElementById("login").style.display = "block";
+            }
+            else {  //ログイン時
+                document.getElementById("user").textContent = "testUser";
+                document.getElementById("logout").style.display = "block";
+                if (id_subject === 1) {    //管理者でログイン時
+                    document.getElementById("time").style.display = "block";
+                }
+            }
+        }
+    </script>
+</head>
+<body>
+    <form name="menu">
+        <div id="login">
+            番号<input type="text" class="a" name="code">
+            <input type="button" class="b" onclick="Login()" value="ログイン"><br>
+        </div>
+        <div id="logout">
+            <label id="user"></label><br>
+            <!--150.82.177.*** or 192.168.137.1-->
+            &nbsp;&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: QueryString['scan_code'], product_name: QueryString['product_name']})">テスト1</a><br><br>
+            &nbsp;1F7FA&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: '1F7FA', product_name: QueryString['product_name']})">テスト2</a><br><br>
+            &nbsp;3FB78&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: '3FB78', product_name: QueryString['product_name']})">テスト3</a><br><br>
+            &nbsp;1918&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: '1918', product_name: QueryString['product_name']})">テスト4</a><br><br>
+            &nbsp;D125E&nbsp;<a href="javascript:SendFormXHR('http://150.82.177.76/', {id_terminal: QueryString['id_terminal'], id_subject: QueryString['id_subject'], id_master: QueryString['id_master'], scan_ut: QueryString['scan_ut'], scan_datetime: QueryString['scan_datetime'], scan_code: 'D125E', product_name: QueryString['product_name']})">テスト5</a><br><br>
+            <br>
+        </div>
+        <br>
+    </form>
+</body>
+</html>
